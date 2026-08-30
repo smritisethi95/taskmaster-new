@@ -1,61 +1,72 @@
-import bcryptjs from 'bcryptjs';
+import mongoose from 'mongoose';
+import bcrypt from 'bcryptjs';
 
-export default function defineUser(sequelize, DataTypes) {
-  const User = sequelize.define('User', {
-    id: {
-      type: DataTypes.UUID,
-      defaultValue: DataTypes.UUIDV4,
-      primaryKey: true
-    },
+const userSchema = new mongoose.Schema(
+  {
     name: {
-      type: DataTypes.STRING,
-      allowNull: false
+      type: String,
+      required: [true, 'Name is required'],
+      trim: true
     },
     email: {
-      type: DataTypes.STRING,
-      allowNull: false,
+      type: String,
+      required: [true, 'Email is required'],
       unique: true,
-      validate: {
-        isEmail: true
-      }
+      lowercase: true,
+      trim: true,
+      match: [/^\S+@\S+\.\S+$/, 'Please provide a valid email']
     },
     password: {
-      type: DataTypes.STRING,
-      allowNull: false,
-      validate: {
-        len: [6, 100]
-      }
+      type: String,
+      required: [true, 'Password is required'],
+      minlength: [6, 'Password must be at least 6 characters']
     },
     avatar: {
-      type: DataTypes.STRING,
-      allowNull: true
+      type: String,
+      default: null
     }
-  }, {
-    tableName: 'users',
+  },
+  {
     timestamps: true,
-    hooks: {
-      beforeCreate: async (user) => {
-        if (user.changed('password')) {
-          user.password = await bcryptjs.hash(user.password, 12);
-        }
-      },
-      beforeUpdate: async (user) => {
-        if (user.changed('password')) {
-          user.password = await bcryptjs.hash(user.password, 12);
-        }
+    toJSON: {
+      virtuals: true,
+      transform: (doc, ret) => {
+        ret.id = ret._id.toString();
+        delete ret._id;
+        delete ret.__v;
+        delete ret.password;
+        return ret;
+      }
+    },
+    toObject: {
+      virtuals: true,
+      transform: (doc, ret) => {
+        ret.id = ret._id.toString();
+        delete ret._id;
+        delete ret.__v;
+        delete ret.password;
+        return ret;
       }
     }
-  });
+  }
+);
 
-  User.prototype.validatePassword = async function (password) {
-    return await bcryptjs.compare(password, this.password);
-  };
+// Hash password before saving
+userSchema.pre('save', async function () {
+  if (!this.isModified('password')) return;
+  const salt = await bcrypt.genSalt(12);
+  this.password = await bcrypt.hash(this.password, salt);
+});
 
-  User.prototype.toSafeJSON = function () {
-    const user = this.toJSON();
-    delete user.password;
-    return user;
-  };
+// Compare password instance method
+userSchema.methods.validatePassword = async function (candidatePassword) {
+  return bcrypt.compare(candidatePassword, this.password);
+};
 
-  return User;
-}
+// Safe JSON instance method for consistency
+userSchema.methods.toSafeJSON = function () {
+  return this.toJSON();
+};
+
+const User = mongoose.models.User || mongoose.model('User', userSchema);
+export default User;

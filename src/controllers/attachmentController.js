@@ -1,14 +1,13 @@
 import fs from 'fs/promises';
-import { Task, Attachment, User } from '../models/index.js';
+import { Task, Attachment } from '../models/index.js';
 import AppError from '../utils/AppError.js';
 import { successResponse } from '../utils/apiResponse.js';
 
 export async function uploadAttachment(req, res, next) {
   try {
     const { taskId } = req.params;
-    const userId = req.user.id;
 
-    const task = await Task.findByPk(taskId);
+    const task = await Task.findById(taskId);
     if (!task) {
       throw new AppError('Task not found', 404);
     }
@@ -18,16 +17,18 @@ export async function uploadAttachment(req, res, next) {
     }
 
     const attachment = await Attachment.create({
-      taskId,
-      uploadedBy: userId,
       filename: req.file.filename,
       originalName: req.file.originalname,
       mimeType: req.file.mimetype,
       size: req.file.size,
-      path: req.file.path
+      path: req.file.path,
+      taskId,
+      uploadedBy: req.user.id
     });
 
-    return successResponse(res, attachment, 'Attachment uploaded successfully', 201);
+    const populated = await Attachment.findById(attachment.id).populate('uploadedBy', 'id name email avatar');
+
+    return successResponse(res, populated, 'Attachment uploaded successfully', 201);
   } catch (error) {
     next(error);
   }
@@ -37,10 +38,9 @@ export async function getAttachments(req, res, next) {
   try {
     const { taskId } = req.params;
 
-    const attachments = await Attachment.findAll({
-      where: { taskId },
-      include: [{ model: User, as: 'uploader', attributes: ['id', 'name', 'email'] }]
-    });
+    const attachments = await Attachment.find({ taskId })
+      .populate('uploadedBy', 'id name email avatar')
+      .sort({ createdAt: -1 });
 
     return successResponse(res, attachments, 'Attachments retrieved successfully');
   } catch (error) {
@@ -50,18 +50,14 @@ export async function getAttachments(req, res, next) {
 
 export async function downloadAttachment(req, res, next) {
   try {
-    const { id, taskId } = req.params;
+    const { id } = req.params;
 
-    const attachment = await Attachment.findOne({ where: { id, taskId } });
+    const attachment = await Attachment.findById(id);
     if (!attachment) {
       throw new AppError('Attachment not found', 404);
     }
 
-    res.download(attachment.path, attachment.originalName, (err) => {
-      if (err) {
-        next(err);
-      }
-    });
+    return res.download(attachment.path, attachment.originalName);
   } catch (error) {
     next(error);
   }
@@ -69,25 +65,24 @@ export async function downloadAttachment(req, res, next) {
 
 export async function deleteAttachment(req, res, next) {
   try {
-    const { id, taskId } = req.params;
-    const userId = req.user.id;
+    const { id } = req.params;
 
-    const attachment = await Attachment.findOne({ where: { id, taskId } });
+    const attachment = await Attachment.findById(id);
     if (!attachment) {
       throw new AppError('Attachment not found', 404);
     }
 
-    if (attachment.uploadedBy !== userId) {
-      throw new AppError('Not authorized to delete this attachment', 403);
+    if (attachment.uploadedBy.toString() !== req.user.id.toString()) {
+      throw new AppError('You are not authorized to delete this attachment', 403);
     }
 
     try {
       await fs.unlink(attachment.path);
-    } catch (fsError) {
-      console.warn('Failed to delete file from filesystem:', fsError);
+    } catch (err) {
+      console.warn('Could not delete file from disk:', err.message);
     }
 
-    await attachment.destroy();
+    await Attachment.findByIdAndDelete(id);
 
     return successResponse(res, null, 'Attachment deleted successfully');
   } catch (error) {

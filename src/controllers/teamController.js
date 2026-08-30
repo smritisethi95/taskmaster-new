@@ -1,8 +1,7 @@
-import { Team, TeamMember, User } from '../models/index.js';
+import { Team, User } from '../models/index.js';
 import AppError from '../utils/AppError.js';
 import { successResponse } from '../utils/apiResponse.js';
 import { createNotification } from '../services/notificationService.js';
-import { Sequelize } from 'sequelize';
 
 export const createTeam = async (req, res, next) => {
   try {
@@ -12,16 +11,21 @@ export const createTeam = async (req, res, next) => {
     const team = await Team.create({
       name,
       description,
-      createdBy
+      createdBy,
+      members: [
+        {
+          user: createdBy,
+          role: 'owner',
+          joinedAt: new Date()
+        }
+      ]
     });
 
-    await TeamMember.create({
-      teamId: team.id,
-      userId: createdBy,
-      role: 'owner'
-    });
+    const populatedTeam = await Team.findById(team.id)
+      .populate('createdBy', 'id name email avatar')
+      .populate('members.user', 'id name email avatar');
 
-    return successResponse(res, team, 'Team created successfully', 201);
+    return successResponse(res, populatedTeam, 'Team created successfully', 201);
   } catch (error) {
     next(error);
   }
@@ -29,28 +33,10 @@ export const createTeam = async (req, res, next) => {
 
 export const getTeams = async (req, res, next) => {
   try {
-    const memberships = await TeamMember.findAll({
-      where: { userId: req.user.id },
-      include: [
-        {
-          model: Team,
-          attributes: {
-            include: [
-              [
-                Sequelize.literal(`(
-                  SELECT COUNT(*)
-                  FROM "TeamMembers" AS "members"
-                  WHERE "members"."teamId" = "Team"."id"
-                )`),
-                'memberCount'
-              ]
-            ]
-          }
-        }
-      ]
-    });
-
-    const teams = memberships.map(m => m.Team);
+    const teams = await Team.find({ 'members.user': req.user.id })
+      .populate('createdBy', 'id name email avatar')
+      .populate('members.user', 'id name email avatar')
+      .sort({ createdAt: -1 });
 
     return successResponse(res, teams);
   } catch (error) {
@@ -62,31 +48,20 @@ export const getTeamById = async (req, res, next) => {
   try {
     const { teamId } = req.params;
 
-    const isMember = await TeamMember.findOne({
-      where: { teamId, userId: req.user.id }
-    });
-
-    if (!isMember) {
-      throw new AppError('You are not a member of this team', 403);
-    }
-
-    const team = await Team.findByPk(teamId, {
-      include: [
-        {
-          model: TeamMember,
-          as: 'members', // Assuming association is aliased like this or similar in Model
-          include: [
-            {
-              model: User,
-              attributes: ['id', 'name', 'email', 'avatar']
-            }
-          ]
-        }
-      ]
-    });
+    const team = await Team.findById(teamId)
+      .populate('createdBy', 'id name email avatar')
+      .populate('members.user', 'id name email avatar');
 
     if (!team) {
       throw new AppError('Team not found', 404);
+    }
+
+    const isMember = team.members.some(
+      (m) => m.user && m.user.id ? m.user.id.toString() === req.user.id.toString() : m.user.toString() === req.user.id.toString()
+    );
+
+    if (!isMember) {
+      throw new AppError('You are not a member of this team', 403);
     }
 
     return successResponse(res, team);
@@ -100,17 +75,22 @@ export const updateTeam = async (req, res, next) => {
     const { teamId } = req.params;
     const { name, description } = req.body;
 
-    const team = await Team.findByPk(teamId);
+    const updateData = {};
+    if (name !== undefined) updateData.name = name;
+    if (description !== undefined) updateData.description = description;
+
+    const team = await Team.findByIdAndUpdate(teamId, updateData, {
+      new: true,
+      runValidators: true
+    })
+      .populate('createdBy', 'id name email avatar')
+      .populate('members.user', 'id name email avatar');
+
     if (!team) {
       throw new AppError('Team not found', 404);
     }
 
-    await team.update({
-      name: name !== undefined ? name : team.name,
-      description: description !== undefined ? description : team.description
-    });
-
-    return successResponse(res, team);
+    return successResponse(res, team, 'Team updated successfully');
   } catch (error) {
     next(error);
   }
@@ -120,12 +100,10 @@ export const deleteTeam = async (req, res, next) => {
   try {
     const { teamId } = req.params;
 
-    const team = await Team.findByPk(teamId);
+    const team = await Team.findByIdAndDelete(teamId);
     if (!team) {
       throw new AppError('Team not found', 404);
     }
-
-    await team.destroy();
 
     return successResponse(res, null, 'Team deleted successfully');
   } catch (error) {
@@ -138,26 +116,31 @@ export const addMember = async (req, res, next) => {
     const { teamId } = req.params;
     const { email, role = 'member' } = req.body;
 
-    const user = await User.findOne({ where: { email } });
+    const user = await User.findOne({ email });
     if (!user) {
       throw new AppError('User not found', 404);
     }
 
-    const existingMember = await TeamMember.findOne({
-      where: { teamId, userId: user.id }
-    });
+    const team = await Team.findById(teamId);
+    if (!team) {
+      throw new AppError('Team not found', 404);
+    }
 
-    if (existingMember) {
+    const isAlreadyMember = team.members.some(
+      (m) => m.user.toString() === user.id.toString()
+    );
+
+    if (isAlreadyMember) {
       throw new AppError('User is already a member of this team', 400);
     }
 
-    const teamMember = await TeamMember.create({
-      teamId,
-      userId: user.id,
-      role
+    team.members.push({
+      user: user.id,
+      role,
+      joinedAt: new Date()
     });
 
-    const team = await Team.findByPk(teamId);
+    await team.save();
 
     await createNotification({
       userId: user.id,
@@ -166,7 +149,11 @@ export const addMember = async (req, res, next) => {
       metadata: { teamId: team.id }
     });
 
-    return successResponse(res, teamMember, 'Member added successfully', 201);
+    const updatedTeam = await Team.findById(teamId)
+      .populate('createdBy', 'id name email avatar')
+      .populate('members.user', 'id name email avatar');
+
+    return successResponse(res, updatedTeam, 'Member added successfully', 201);
   } catch (error) {
     next(error);
   }
@@ -176,19 +163,26 @@ export const removeMember = async (req, res, next) => {
   try {
     const { teamId, userId } = req.params;
 
-    const member = await TeamMember.findOne({
-      where: { teamId, userId }
-    });
-
-    if (!member) {
-      throw new AppError('Member not found', 404);
+    const team = await Team.findById(teamId);
+    if (!team) {
+      throw new AppError('Team not found', 404);
     }
 
-    if (member.role === 'owner' && req.user.id === userId) {
+    const memberIndex = team.members.findIndex(
+      (m) => m.user.toString() === userId.toString()
+    );
+
+    if (memberIndex === -1) {
+      throw new AppError('Member not found in this team', 404);
+    }
+
+    const member = team.members[memberIndex];
+    if (member.role === 'owner' && req.user.id.toString() === userId.toString()) {
       throw new AppError('Owner cannot remove themselves', 400);
     }
 
-    await member.destroy();
+    team.members.splice(memberIndex, 1);
+    await team.save();
 
     return successResponse(res, null, 'Member removed successfully');
   } catch (error) {
@@ -205,23 +199,29 @@ export const changeMemberRole = async (req, res, next) => {
       throw new AppError('Cannot transfer ownership directly via role change', 400);
     }
 
-    if (req.user.id === userId) {
+    if (req.user.id.toString() === userId.toString()) {
       throw new AppError('Cannot change your own role', 400);
     }
 
-    const member = await TeamMember.findOne({
-      where: { teamId, userId }
-    });
+    const team = await Team.findById(teamId);
+    if (!team) {
+      throw new AppError('Team not found', 404);
+    }
+
+    const member = team.members.find(
+      (m) => m.user.toString() === userId.toString()
+    );
 
     if (!member) {
-      throw new AppError('Member not found', 404);
+      throw new AppError('Member not found in this team', 404);
     }
 
     if (member.role === 'owner') {
       throw new AppError('Cannot change role of the owner', 400);
     }
 
-    await member.update({ role });
+    member.role = role;
+    await team.save();
 
     return successResponse(res, member, 'Member role updated successfully');
   } catch (error) {
