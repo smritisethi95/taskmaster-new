@@ -1,43 +1,40 @@
+import mongoose from 'mongoose';
 import dotenv from 'dotenv';
-import { Sequelize } from 'sequelize';
 
 dotenv.config();
 
-const env = process.env.NODE_ENV || 'development';
+let mongoServer = null;
 
-const dbConfig = {
-  username: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASSWORD || 'postgres',
-  database: process.env.DB_NAME || 'taskmaster',
-  host: process.env.DB_HOST || 'localhost',
-  port: process.env.DB_PORT || 5432,
-  dialect: 'postgres',
-  logging: env === 'production' ? false : console.log,
-  pool: {
-    max: 5,
-    min: 0,
-    acquire: 30000,
-    idle: 10000
+export async function connectDB() {
+  try {
+    let uri = process.env.MONGODB_URI;
+
+    // If no MONGODB_URI is provided, launch an embedded Mongo Memory Server for zero-setup local runs/tests
+    if (!uri) {
+      console.log('ℹ️  No MONGODB_URI found in .env. Starting in-memory MongoDB instance for local testing...');
+      const { MongoMemoryServer } = await import('mongodb-memory-server');
+      mongoServer = await MongoMemoryServer.create();
+      uri = mongoServer.getUri();
+    }
+
+    const conn = await mongoose.connect(uri);
+    console.log(`✅ MongoDB connected successfully: ${conn.connection.host}`);
+    return conn;
+  } catch (error) {
+    console.error('❌ MongoDB connection error:', error.message);
+    throw error;
   }
-};
+}
 
-const sequelize = new Sequelize(
-  dbConfig.database,
-  dbConfig.username,
-  dbConfig.password,
-  {
-    host: dbConfig.host,
-    port: dbConfig.port,
-    dialect: dbConfig.dialect,
-    logging: dbConfig.logging,
-    pool: dbConfig.pool
+export async function disconnectDB() {
+  try {
+    await mongoose.disconnect();
+    if (mongoServer) {
+      await mongoServer.stop();
+    }
+  } catch (error) {
+    console.error('Error disconnecting MongoDB:', error);
   }
-);
+}
 
-export { sequelize };
-export default sequelize;
-
-// CommonJS-compatible config object for sequelize-cli
-export const development = { ...dbConfig };
-export const test = { ...dbConfig, logging: false };
-export const production = { ...dbConfig, logging: false };
+export default connectDB;

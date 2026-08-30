@@ -1,39 +1,61 @@
-export default function defineAttachment(sequelize, DataTypes) {
-  return sequelize.define('Attachment', {
-    id: {
-      type: DataTypes.UUID,
-      defaultValue: DataTypes.UUIDV4,
-      primaryKey: true
-    },
+import mongoose from 'mongoose';
+
+const attachmentSchema = new mongoose.Schema(
+  {
     filename: {
-      type: DataTypes.STRING,
-      allowNull: false
+      type: String,
+      required: true
     },
     originalName: {
-      type: DataTypes.STRING,
-      allowNull: false
+      type: String,
+      required: true
     },
     mimeType: {
-      type: DataTypes.STRING
+      type: String,
+      default: ''
     },
     size: {
-      type: DataTypes.INTEGER
+      type: Number,
+      default: 0
     },
     path: {
-      type: DataTypes.STRING,
-      allowNull: false
+      type: String,
+      required: true
     },
     taskId: {
-      type: DataTypes.UUID,
-      allowNull: false
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Task',
+      required: true,
+      index: true
     },
     uploadedBy: {
-      type: DataTypes.UUID,
-      allowNull: false
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true
     }
-  }, {
-    tableName: 'attachments',
-    timestamps: true,
-    updatedAt: false
-  });
-}
+  },
+  {
+    timestamps: { createdAt: true, updatedAt: false },
+    toJSON: {
+      virtuals: true,
+      transform: (doc, ret) => {
+        ret.id = ret._id.toString();
+        delete ret._id;
+        delete ret.__v;
+        return ret;
+      }
+    },
+    toObject: {
+      virtuals: true,
+      transform: (doc, ret) => {
+        ret.id = ret._id.toString();
+        delete ret._id;
+        delete ret.__v;
+        return ret;
+      }
+    }
+  }
+);
+
+const Attachment = mongoose.models.Attachment || mongoose.model('Attachment', attachmentSchema);
+export default Attachment;

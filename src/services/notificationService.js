@@ -13,7 +13,10 @@ export async function createNotification({ userId, type, message, metadata = {} 
   try {
     const wss = getWebSocketServer();
     if (wss && typeof wss.sendToUser === 'function') {
-      wss.sendToUser(userId, { type: 'notification', data: notification.toJSON() });
+      wss.sendToUser(userId.toString(), {
+        type: 'notification',
+        data: notification.toJSON()
+      });
     }
   } catch (error) {
     console.warn('Failed to send real-time notification via WebSocket:', error);

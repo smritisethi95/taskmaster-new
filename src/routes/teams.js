@@ -20,60 +20,60 @@ router.post(
 
 router.get('/', teamController.getTeams);
 
-router.get('/:teamId', [param('teamId').isUUID()], validate, teamController.getTeamById);
+router.get('/:teamId', [param('teamId').isMongoId().withMessage('Valid teamId is required')], validate, teamController.getTeamById);
 
 router.put(
   '/:teamId',
-  authorizeTeamRole('owner', 'admin'),
   [
-    param('teamId').isUUID(),
+    param('teamId').isMongoId().withMessage('Valid teamId is required'),
     body('name').optional().isString(),
     body('description').optional().isString()
   ],
   validate,
+  authorizeTeamRole('owner', 'admin'),
   teamController.updateTeam
 );
 
 router.delete(
   '/:teamId',
-  authorizeTeamRole('owner'),
-  [param('teamId').isUUID()],
+  [param('teamId').isMongoId().withMessage('Valid teamId is required')],
   validate,
+  authorizeTeamRole('owner'),
   teamController.deleteTeam
 );
 
 router.post(
   '/:teamId/members',
-  authorizeTeamRole('owner', 'admin'),
   [
-    param('teamId').isUUID(),
+    param('teamId').isMongoId().withMessage('Valid teamId is required'),
     body('email').isEmail().withMessage('Valid email is required'),
     body('role').optional().isIn(['admin', 'member'])
   ],
   validate,
+  authorizeTeamRole('owner', 'admin'),
   teamController.addMember
 );
 
 router.delete(
   '/:teamId/members/:userId',
-  authorizeTeamRole('owner', 'admin'),
   [
-    param('teamId').isUUID(),
-    param('userId').isUUID()
+    param('teamId').isMongoId().withMessage('Valid teamId is required'),
+    param('userId').isMongoId().withMessage('Valid userId is required')
   ],
   validate,
+  authorizeTeamRole('owner', 'admin'),
   teamController.removeMember
 );
 
 router.patch(
   '/:teamId/members/:userId/role',
-  authorizeTeamRole('owner'),
   [
-    param('teamId').isUUID(),
-    param('userId').isUUID(),
+    param('teamId').isMongoId().withMessage('Valid teamId is required'),
+    param('userId').isMongoId().withMessage('Valid userId is required'),
     body('role').notEmpty().isIn(['admin', 'member'])
   ],
   validate,
+  authorizeTeamRole('owner'),
   teamController.changeMemberRole
 );
 

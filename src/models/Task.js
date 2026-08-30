@@ -1,43 +1,72 @@
-export default function defineTask(sequelize, DataTypes) {
-  return sequelize.define('Task', {
-    id: {
-      type: DataTypes.UUID,
-      defaultValue: DataTypes.UUIDV4,
-      primaryKey: true
-    },
+import mongoose from 'mongoose';
+
+const taskSchema = new mongoose.Schema(
+  {
     title: {
-      type: DataTypes.STRING,
-      allowNull: false
+      type: String,
+      required: [true, 'Task title is required'],
+      trim: true
     },
     description: {
-      type: DataTypes.TEXT
+      type: String,
+      trim: true,
+      default: ''
     },
     status: {
-      type: DataTypes.ENUM('open', 'in_progress', 'completed', 'archived'),
-      defaultValue: 'open'
+      type: String,
+      enum: ['open', 'in_progress', 'completed', 'archived'],
+      default: 'open'
     },
     priority: {
-      type: DataTypes.ENUM('low', 'medium', 'high', 'urgent'),
-      defaultValue: 'medium'
+      type: String,
+      enum: ['low', 'medium', 'high', 'urgent'],
+      default: 'medium'
     },
     dueDate: {
-      type: DataTypes.DATEONLY,
-      allowNull: true
+      type: Date,
+      default: null
     },
     createdBy: {
-      type: DataTypes.UUID,
-      allowNull: false
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true
     },
     assigneeId: {
-      type: DataTypes.UUID,
-      allowNull: true
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
     },
     teamId: {
-      type: DataTypes.UUID,
-      allowNull: true
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Team',
+      default: null
     }
-  }, {
-    tableName: 'tasks',
-    timestamps: true
-  });
-}
+  },
+  {
+    timestamps: true,
+    toJSON: {
+      virtuals: true,
+      transform: (doc, ret) => {
+        ret.id = ret._id.toString();
+        delete ret._id;
+        delete ret.__v;
+        return ret;
+      }
+    },
+    toObject: {
+      virtuals: true,
+      transform: (doc, ret) => {
+        ret.id = ret._id.toString();
+        delete ret._id;
+        delete ret.__v;
+        return ret;
+      }
+    }
+  }
+);
+
+// Add text search index on title and description
+taskSchema.index({ title: 'text', description: 'text' });
+
+const Task = mongoose.models.Task || mongoose.model('Task', taskSchema);
+export default Task;

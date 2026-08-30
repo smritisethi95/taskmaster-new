@@ -15,9 +15,9 @@ router.post(
     body('description').optional().isString(),
     body('status').optional().isIn(['open', 'in_progress', 'completed', 'archived']),
     body('priority').optional().isIn(['low', 'medium', 'high', 'urgent']),
-    body('dueDate').optional().isDate(),
-    body('teamId').optional().isUUID(),
-    body('assigneeId').optional().isUUID()
+    body('dueDate').optional().isISO8601().toDate(),
+    body('teamId').optional().isMongoId().withMessage('Valid teamId is required'),
+    body('assigneeId').optional().isMongoId().withMessage('Valid assigneeId is required')
   ],
   validate,
   taskController.createTask
@@ -25,19 +25,19 @@ router.post(
 
 router.get('/', taskController.getTasks);
 
-router.get('/:id', [param('id').isUUID()], validate, taskController.getTaskById);
+router.get('/:id', [param('id').isMongoId().withMessage('Valid task ID is required')], validate, taskController.getTaskById);
 
 router.put(
   '/:id',
   [
-    param('id').isUUID(),
+    param('id').isMongoId().withMessage('Valid task ID is required'),
     body('title').optional().isString(),
     body('description').optional().isString(),
     body('status').optional().isIn(['open', 'in_progress', 'completed', 'archived']),
     body('priority').optional().isIn(['low', 'medium', 'high', 'urgent']),
-    body('dueDate').optional().isDate(),
-    body('teamId').optional().isUUID(),
-    body('assigneeId').optional().isUUID()
+    body('dueDate').optional().isISO8601().toDate(),
+    body('teamId').optional().isMongoId(),
+    body('assigneeId').optional().isMongoId()
   ],
   validate,
   taskController.updateTask
@@ -46,7 +46,7 @@ router.put(
 router.patch(
   '/:id/status',
   [
-    param('id').isUUID(),
+    param('id').isMongoId().withMessage('Valid task ID is required'),
     body('status').notEmpty().isIn(['open', 'in_progress', 'completed', 'archived'])
   ],
   validate,
@@ -56,13 +56,13 @@ router.patch(
 router.patch(
   '/:id/assign',
   [
-    param('id').isUUID(),
-    body('assigneeId').notEmpty().isUUID()
+    param('id').isMongoId().withMessage('Valid task ID is required'),
+    body('assigneeId').notEmpty().isMongoId().withMessage('Valid assigneeId is required')
   ],
   validate,
   taskController.assignTask
 );
 
-router.delete('/:id', [param('id').isUUID()], validate, taskController.deleteTask);
+router.delete('/:id', [param('id').isMongoId().withMessage('Valid task ID is required')], validate, taskController.deleteTask);
 
 export default router;

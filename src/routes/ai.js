@@ -23,7 +23,7 @@ router.post(
 router.post(
   '/summarize-task',
   [
-    body('taskId').notEmpty().withMessage('Task ID is required').isUUID()
+    body('taskId').notEmpty().withMessage('Task ID is required').isMongoId().withMessage('Valid taskId is required')
   ],
   validate,
   aiController.summarizeTask

@@ -1,33 +1,52 @@
-export default function defineNotification(sequelize, DataTypes) {
-  return sequelize.define('Notification', {
-    id: {
-      type: DataTypes.UUID,
-      defaultValue: DataTypes.UUIDV4,
-      primaryKey: true
-    },
+import mongoose from 'mongoose';
+
+const notificationSchema = new mongoose.Schema(
+  {
     userId: {
-      type: DataTypes.UUID,
-      allowNull: false
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+      index: true
     },
     type: {
-      type: DataTypes.STRING,
-      allowNull: false
+      type: String,
+      required: true
     },
     message: {
-      type: DataTypes.TEXT,
-      allowNull: false
+      type: String,
+      required: true
     },
     metadata: {
-      type: DataTypes.JSONB,
-      defaultValue: {}
+      type: mongoose.Schema.Types.Mixed,
+      default: () => ({})
     },
     isRead: {
-      type: DataTypes.BOOLEAN,
-      defaultValue: false
+      type: Boolean,
+      default: false
     }
-  }, {
-    tableName: 'notifications',
-    timestamps: true,
-    updatedAt: false
-  });
-}
+  },
+  {
+    timestamps: { createdAt: true, updatedAt: false },
+    toJSON: {
+      virtuals: true,
+      transform: (doc, ret) => {
+        ret.id = ret._id.toString();
+        delete ret._id;
+        delete ret.__v;
+        return ret;
+      }
+    },
+    toObject: {
+      virtuals: true,
+      transform: (doc, ret) => {
+        ret.id = ret._id.toString();
+        delete ret._id;
+        delete ret.__v;
+        return ret;
+      }
+    }
+  }
+);
+
+const Notification = mongoose.models.Notification || mongoose.model('Notification', notificationSchema);
+export default Notification;

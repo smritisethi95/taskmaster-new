@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import authConfig from '../config/auth.js';
-import { User, TeamMember } from '../models/index.js';
+import { User, Team } from '../models/index.js';
 import AppError from '../utils/AppError.js';
 
 export async function authenticate(req, res, next) {
@@ -13,7 +13,7 @@ export async function authenticate(req, res, next) {
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, authConfig.jwtSecret);
 
-    const user = await User.findByPk(decoded.id);
+    const user = await User.findById(decoded.id);
     if (!user) {
       throw new AppError('User not found', 401);
     }
@@ -33,9 +33,14 @@ export function authorizeTeamRole(...roles) {
         throw new AppError('Team ID is required', 400);
       }
 
-      const member = await TeamMember.findOne({
-        where: { teamId, userId: req.user.id }
-      });
+      const team = await Team.findById(teamId);
+      if (!team) {
+        throw new AppError('Team not found', 404);
+      }
+
+      const member = team.members.find(
+        (m) => m.user.toString() === req.user.id.toString()
+      );
 
       if (!member) {
         throw new AppError('Not a member of this team', 403);
@@ -46,6 +51,7 @@ export function authorizeTeamRole(...roles) {
       }
 
       req.teamMember = member;
+      req.team = team;
       next();
     } catch (error) {
       next(error);

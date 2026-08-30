@@ -5,17 +5,18 @@ import { getPaginationParams, getPaginationMeta } from '../utils/pagination.js';
 
 export async function getNotifications(req, res, next) {
   try {
-    const userId = req.user.id;
-    const { limit, offset } = getPaginationParams(req.query);
+    const { page = 1, limit = 20 } = req.query;
+    const { offset, limit: limitNum } = getPaginationParams({ page, limit });
 
-    const { rows: notifications, count } = await Notification.findAndCountAll({
-      where: { userId },
-      order: [['createdAt', 'DESC']],
-      limit,
-      offset
-    });
+    const [notifications, total] = await Promise.all([
+      Notification.find({ userId: req.user.id })
+        .sort({ createdAt: -1 })
+        .skip(offset)
+        .limit(limitNum),
+      Notification.countDocuments({ userId: req.user.id })
+    ]);
 
-    const meta = getPaginationMeta(count, req.query.page, limit);
+    const meta = getPaginationMeta(total, page, limitNum);
 
     return successResponse(res, { notifications, meta }, 'Notifications retrieved successfully');
   } catch (error) {
@@ -26,15 +27,14 @@ export async function getNotifications(req, res, next) {
 export async function markAsRead(req, res, next) {
   try {
     const { id } = req.params;
-    const userId = req.user.id;
 
-    const notification = await Notification.findByPk(id);
+    const notification = await Notification.findById(id);
     if (!notification) {
       throw new AppError('Notification not found', 404);
     }
 
-    if (notification.userId !== userId) {
-      throw new AppError('Not authorized', 403);
+    if (notification.userId.toString() !== req.user.id.toString()) {
+      throw new AppError('You are not authorized to update this notification', 403);
     }
 
     notification.isRead = true;
@@ -48,14 +48,12 @@ export async function markAsRead(req, res, next) {
 
 export async function markAllAsRead(req, res, next) {
   try {
-    const userId = req.user.id;
-
-    const [updatedCount] = await Notification.update(
-      { isRead: true },
-      { where: { userId, isRead: false } }
+    const result = await Notification.updateMany(
+      { userId: req.user.id, isRead: false },
+      { isRead: true }
     );
 
-    return successResponse(res, { count: updatedCount }, 'Notifications marked as read');
+    return successResponse(res, { count: result.modifiedCount }, 'Notifications marked as read');
   } catch (error) {
     next(error);
   }
