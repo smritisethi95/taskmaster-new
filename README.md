@@ -383,4 +383,4 @@ All errors return a consistent JSON structure:
 
 ## License
 
-MIT
+MIT..
